@@ -1,67 +1,39 @@
-require('dotenv').config();
-const { Pool } = require('pg');
 const express = require('express');
+const { Pool } = require('pg');
 const app = express();
+const port = process.env.PORT || 3000;
 
-// Initialize the database connection pool
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+// Database configuration (Railway provides these via environment variables)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-app.use(express.json());
-
-/**
- * Setup the database table if it doesn't exist.
- * This runs automatically when the server starts.
- */
-const setupDatabase = async () => {
-  const query = `
-    CREATE TABLE IF NOT EXISTS employees (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255),
-        email VARCHAR(255),
-        role VARCHAR(255)
-    );
-  `;
-  try {
-    await pool.query(query);
-    console.log("Database connection successful. Table 'employees' is ready.");
-  } catch (err) {
-    console.error("Error setting up table:", err);
-  }
-};
-
-/**
- * Route: GET /employees
- * Fetches all employees from the database.
- */
+// GET: Fetch all employees
 app.get('/employees', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM employees');
+    const result = await pool.query('SELECT * FROM employees ORDER BY id ASC');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * Route: GET /seed
- * Temporary helper route to add test data to your database.
- */
-app.get('/seed', async (req, res) => {
+// POST: Add a new employee
+app.post('/employees', async (req, res) => {
+  const { name, email, role } = req.body;
   try {
-    await pool.query(`
-      INSERT INTO employees (name, email, role) 
-      VALUES ('Gemini Tester', 'test@numinatech.com', 'Admin')
-    `);
-    res.send('Database seeded! Now go back to /employees');
+    const query = 'INSERT INTO employees (name, email, role) VALUES ($1, $2, $3) RETURNING *';
+    const values = [name, email, role];
+    const result = await pool.query(query, values);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Run database setup then start the server
-setupDatabase().then(() => {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`Server is live at http://localhost:${PORT}`));
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
